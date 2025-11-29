@@ -1,7 +1,7 @@
 import { io } from "socket.io-client"; 
 
 // USE NGROK SOCKET URL
-const SOCKET_URL = "https://backendddd-2xa6.onrender.com";
+const SOCKET_URL = "https://dummy-bac.onrender.com";
 
 const socket = io(SOCKET_URL, {
   transports: ["websocket"],

@@ -232,12 +232,25 @@ const Menu: React.FC<MenuProps> = ({
             setActivePage('travel');
           }}
         />
+
+
+
+        <MenuItem
+  icon="shopping-bag"
+  text={t('myOrders')}
+  onPress={() => {
+    toggleMenu();
+    navigation.navigate('EnhancedMyOrders');
+  }}
+/>
+
+
         <MenuItem icon="settings" text={t('settings')} onPress={navigateToSettings} />
         <MenuItem icon="logout" text={t('logout')} onPress={handleLogout} />
         <View style={styles.menuDivider} />
         <View style={styles.menuFooter}>
           <Text style={styles.footerText}>App Version 1.0.0</Text>
-          <Text style={styles.footerText}>© 2025 TaxiApp Inc.</Text>
+          <Text style={styles.footerText}>© 2025 Eazy Go.</Text>
         </View>
       </ScrollView>
     </View>

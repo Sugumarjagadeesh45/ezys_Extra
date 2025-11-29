@@ -1,4 +1,4 @@
-// /Users/webasebrandings/Downloads/new-main/src/Screen1/Shopping/BuyNow.tsx
+// /Users/webasebrandings/Documents/new-main/src/Screen1/Shopping/BuyNow.tsx
 import React, { useState, useContext, useEffect } from 'react';
 import { 
   View, 
@@ -15,8 +15,9 @@ import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { CartContext } from './ShoppingContent';
 import { useAddress } from './AddressContext';
-import { getImageUrl } from '../../../src/util/backendConfig';
+import { getImageUrl, getBackendUrl } from '../../../src/util/backendConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 
 const BuyNow = () => {
   const navigation = useNavigation();
@@ -52,43 +53,185 @@ const BuyNow = () => {
     );
   };
 
+
+  
+
   const handleCheckout = async () => {
-    if (cartItems.length === 0) {
-      Alert.alert('Empty Cart', 'Your cart is empty. Add some products to checkout.');
-      return;
+  if (cartItems.length === 0) {
+    Alert.alert('Empty Cart', 'Your cart is empty. Add some products to checkout.');
+    return;
+  }
+  
+  // Check for delivery address
+  const hasAddress = defaultAddress || (userData && userData.address);
+  
+  if (!hasAddress) {
+    Alert.alert('Address Required', 'Please add a delivery address before checkout.');
+    navigation.navigate('AddressManagement');
+    return;
+  }
+  
+  setLoading(true);
+  
+  try {
+    // Get authentication token - try multiple possible keys
+    let token = await AsyncStorage.getItem('userToken');
+    if (!token) {
+      token = await AsyncStorage.getItem('authToken');
+    }
+    if (!token) {
+      token = await AsyncStorage.getItem('token');
     }
     
-    const hasAddress = defaultAddress || (userData && userData.address);
-    
-    if (!hasAddress) {
-      Alert.alert('Address Required', 'Please add a delivery address before checkout.');
-      navigation.navigate('AddressManagement');
-      return;
+    if (!token) {
+      throw new Error('User not authenticated - no token found');
     }
+
+    // Get user data if not already loaded
+    if (!userData) {
+      const userProfile = await AsyncStorage.getItem('userProfile');
+      if (userProfile) {
+        setUserData(JSON.parse(userProfile));
+      } else {
+        throw new Error('User data not found');
+      }
+    }
+
+    const BASE_URL = getBackendUrl();
     
-    setLoading(true);
+    console.log('🔗 Using backend URL:', BASE_URL);
+    console.log('🔑 User token exists:', !!token);
+    console.log('👤 User ID:', userData._id || userData.id);
+    console.log('👤 Customer ID:', userData.customerId);
+
+    // Create order data with correct structure
+    const orderData = {
+      userId: userData._id || userData.id,
+      customerId: userData.customerId, // This should be populated from the backend
+      customerName: userData.name,
+      customerPhone: userData.phoneNumber,
+      customerEmail: userData.email || '',
+      customerAddress: userData.address,
+      products: cartItems.map(item => ({
+        _id: item._id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        images: item.images || [],
+        category: item.category || 'General'
+      })),
+      deliveryAddress: defaultAddress || {
+        name: userData.name,
+        phone: userData.phoneNumber,
+        addressLine1: userData.address,
+        city: 'City',
+        state: 'State', 
+        pincode: '000000',
+        country: 'India'
+      },
+      paymentMethod: selectedPayment,
+      useWallet: false
+    };
+
+    console.log('📦 Placing order with data:', orderData);
+
+    // Test connection first
+    console.log('🧪 Testing backend connection...');
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const testResponse = await axios.get(`${BASE_URL}/api/test-connection`, {
+        timeout: 5000
+      });
+      console.log('✅ Backend connection test:', testResponse.data);
+    } catch (testError) {
+      console.error('❌ Backend connection failed:', testError.message);
+      throw new Error(`Cannot connect to server: ${testError.message}`);
+    }
+
+    // Try multiple order creation endpoints
+    const orderEndpoints = [
+      `${BASE_URL}/api/orders/create`,
+      `${BASE_URL}/api/orders/create-direct`,
+      `${BASE_URL}/orders/create`
+    ];
+    
+    let orderResponse = null;
+    let lastError = null;
+    
+    for (const endpoint of orderEndpoints) {
+      try {
+        console.log(`🔄 Trying order endpoint: ${endpoint}`);
+        orderResponse = await axios.post(endpoint, orderData, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        });
+        
+        console.log(`✅ Order created via ${endpoint}:`, orderResponse.data);
+        break; // Success, exit loop
+      } catch (endpointError) {
+        console.log(`❌ Endpoint ${endpoint} failed:`, endpointError.message);
+        lastError = endpointError;
+        continue; // Try next endpoint
+      }
+    }
+    
+    if (!orderResponse) {
+      throw new Error(`All order endpoints failed. Last error: ${lastError?.message}`);
+    }
+
+    // Process successful order response
+    if (orderResponse.data.success) {
+      clearCart();
       
       Alert.alert(
-        'Order Confirmed',
-        `Your order has been placed successfully!\nTotal Amount: ₹${calculateTotal().toFixed(2)}`,
+        'Order Confirmed!',
+        `Your order #${orderResponse.data.data.orderId} has been placed successfully!\nTotal: ₹${calculateTotal().toFixed(2)}`,
         [
-          { 
-            text: 'OK', 
+          {
+            text: 'View Orders',
+            onPress: () => navigation.navigate('EnhancedMyOrders')
+          },
+          {
+            text: 'Continue Shopping',
             onPress: () => {
-              clearCart();
-              navigation.navigate('EnhancedMyOrders');
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Screen1' }],
+              });
             }
           }
         ]
       );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to process order');
-    } finally {
-      setLoading(false);
+    } else {
+      throw new Error(orderResponse.data.error || 'Failed to place order');
     }
-  };
+  } catch (error) {
+    console.error('❌ Error placing order:', error);
+    
+    let errorMessage = 'Failed to place order. Please try again.';
+    
+    if (error.code === 'ECONNABORTED') {
+      errorMessage = 'Request timeout. Please check your internet connection.';
+    } else if (error.message.includes('Network Error')) {
+      errorMessage = 'Network error. Please check:\n• Your internet connection\n• Backend server is running\n• Correct backend URL';
+    } else if (error.response) {
+      errorMessage = error.response.data.error || `Server error: ${error.response.status}`;
+    } else if (error.request) {
+      errorMessage = 'No response from server. Please check if backend is running.';
+    } else {
+      errorMessage = error.message || 'Unknown error occurred';
+    }
+    
+    Alert.alert('Order Failed', errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
 
   const calculateSubtotal = () => {
     return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
@@ -215,7 +358,7 @@ const BuyNow = () => {
           <Text style={styles.emptyText}>Looks like you haven't added anything to your cart yet</Text>
           <TouchableOpacity 
             style={styles.shopButtonLarge} 
-            onPress={() => navigation.navigate('Shopping')}
+            onPress={() => navigation.navigate('Screen1')}
           >
             <Text style={styles.shopButtonLargeText}>Start Shopping</Text>
           </TouchableOpacity>
@@ -377,6 +520,8 @@ const BuyNow = () => {
     </View>
   );
 };
+
+
 
 const styles = StyleSheet.create({
   container: {

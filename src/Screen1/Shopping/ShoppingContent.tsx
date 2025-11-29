@@ -2,6 +2,11 @@
 import React, { createContext, useState, useContext, ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const CART_STORAGE_KEY = 'user_cart_data'
+
 export interface CartItem {
   _id: string;
   name: string;
@@ -42,29 +47,66 @@ interface CartProviderProps {
 export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
+
+
+  const loadCartFromStorage = async () => {
+    try {
+      const savedCart = await AsyncStorage.getItem(CART_STORAGE_KEY);
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart);
+        console.log('🛒 Loaded cart from storage:', parsedCart.length, 'items');
+        setCartItems(parsedCart);
+      }
+    } catch (error) {
+      console.error('❌ Error loading cart from storage:', error);
+    }
+  };
+
+  const saveCartToStorage = async () => {
+    try {
+      await AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+      console.log('💾 Saved cart to storage:', cartItems.length, 'items');
+    } catch (error) {
+      console.error('❌ Error saving cart to storage:', error);
+    }
+  };
+
   const addToCart = (product: any) => {
     setCartItems(prevItems => {
       const existingItem = prevItems.find(item => item._id === product._id);
+      let newItems;
+      
       if (existingItem) {
-        return prevItems.map(item =>
+        newItems = prevItems.map(item =>
           item._id === product._id
             ? { ...item, quantity: item.quantity + 1 }
             : item
         );
+      } else {
+        newItems = [...prevItems, { 
+          ...product, 
+          quantity: 1 
+        }];
       }
-      return [...prevItems, { 
-        ...product, 
-        quantity: 1 
-      }];
+      
+      console.log('🛒 Added to cart:', product.name, 'Total items:', newItems.length);
+      return newItems;
     });
   };
 
   const removeFromCart = (productId: string) => {
-    setCartItems(prevItems => prevItems.filter(item => item._id !== productId));
+    setCartItems(prevItems => {
+      const newItems = prevItems.filter(item => item._id !== productId);
+      console.log('🗑️ Removed from cart. Total items:', newItems.length);
+      return newItems;
+    });
   };
 
   const clearCart = () => {
+    console.log('🧹 Clearing entire cart');
     setCartItems([]);
+    // Also clear from storage
+    AsyncStorage.removeItem(CART_STORAGE_KEY).catch(console.error);
   };
 
   const updateQuantity = (productId: string, quantity: number) => {
@@ -78,6 +120,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       );
     }
   };
+
 
   const getCartTotal = () => {
     return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);

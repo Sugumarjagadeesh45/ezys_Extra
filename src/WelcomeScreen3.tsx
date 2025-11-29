@@ -23,7 +23,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const LOCAL_IP = Platform.OS === 'android' ? '10.0.2.2' : '192.168.1.107';
 const LOCAL_PORT = '5001';
-const SERVER_URL = 'https://backendddd-2xa6.onrender.com';
+const SERVER_URL = 'https://dummy-bac.onrender.com';
 const LOCAL_URL = `http://${LOCAL_IP}:${LOCAL_PORT}/api/auth`;
 
 const callBackend = async (endpoint: string, data: any, timeout = 5000) => {

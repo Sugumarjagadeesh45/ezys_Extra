@@ -139,6 +139,9 @@ export default function App() {
               <Stack.Screen name="EnhancedBuying" component={EnhancedBuying} />
               <Stack.Screen name="EnhancedCart" component={EnhancedCart} />
               <Stack.Screen name="EnhancedMyOrders" component={EnhancedMyOrders} />
+
+
+                <Stack.Screen name="Shopping" component={Screen1} />
             </Stack.Navigator>
           </NavigationContainer>
         </CartProvider>

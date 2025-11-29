@@ -53,51 +53,25 @@ export const AddressProvider: React.FC<{ children: ReactNode }> = ({ children })
     initializeAddressData();
   }, []);
 
-const initializeAddressData = async () => {
-  try {
-    await Promise.all([fetchAddresses(), fetchUserProfileForAddress()]);
-  } catch (error) {
-    console.error('Error initializing address data:', error);
-    // Continue execution even if there's an error
-  } finally {
-    setLoading(false);
-  }
-};
+  const initializeAddressData = async () => {
+    try {
+      await Promise.all([fetchUserProfileForAddress()]);
+    } catch (error) {
+      console.error('Error initializing address data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchUserProfileForAddress = async () => {
     try {
-      const token = await AsyncStorage.getItem('userToken') || await AsyncStorage.getItem('authToken');
-      const backendUrl = getBackendUrl();
-
-      if (!token) {
-        // Try to get from AsyncStorage
-        const storedProfile = await AsyncStorage.getItem('userProfile');
-        if (storedProfile) {
-          const user = JSON.parse(storedProfile);
-          await createAddressFromProfile(user);
-        }
-        return;
-      }
-
-      const response = await axios.get(`${backendUrl}/api/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.data.success) {
-        const user = response.data.user;
+      const userProfile = await AsyncStorage.getItem('userProfile');
+      if (userProfile) {
+        const user = JSON.parse(userProfile);
         await createAddressFromProfile(user);
-        
-        // Store profile for future use
-        await AsyncStorage.setItem('userProfile', JSON.stringify(user));
       }
     } catch (error) {
       console.error('Error fetching user profile for address:', error);
-      // Try to get from AsyncStorage as fallback
-      const storedProfile = await AsyncStorage.getItem('userProfile');
-      if (storedProfile) {
-        const user = JSON.parse(storedProfile);
-        await createAddressFromProfile(user);
-      }
     }
   };
 
@@ -117,122 +91,42 @@ const initializeAddressData = async () => {
       
       setAddresses([profileAddress]);
       
-      // Also store in AsyncStorage for shopping components
+      // Store for shopping components
       await AsyncStorage.setItem('shippingAddress', JSON.stringify(profileAddress));
     }
   };
 
-
-  // Replace the fetchAddresses function in AddressContext.tsx with this version
-const fetchAddresses = async () => {
-  try {
-    const token = await AsyncStorage.getItem('userToken') || await AsyncStorage.getItem('authToken');
-    const backendUrl = getBackendUrl();
-    
-    if (!token) {
-      console.log('No auth token found for fetching addresses');
-      return;
-    }
-    
-    // Try to get user ID from token or profile
-    const userProfile = await AsyncStorage.getItem('userProfile');
-    let userId = null;
-    
-    if (userProfile) {
-      const profile = JSON.parse(userProfile);
-      userId = profile.id || profile._id || profile.userId;
-    }
-    
-    if (!userId) {
-      console.log('No user ID found for fetching addresses');
-      return;
-    }
-    
-    try {
-      const response = await axios.get(`${backendUrl}/api/addresses/${userId}`);
-      
-      if (response.data.success) {
-        setAddresses(response.data.data);
-      }
-    } catch (apiError) {
-      // If the API endpoint doesn't exist (404), just continue with empty addresses
-      if (apiError.response && apiError.response.status === 404) {
-        console.log('Address API endpoint not found, continuing with empty addresses');
-        return;
-      }
-      // For other errors, log but don't crash
-      console.error('Error fetching addresses:', apiError);
-    }
-  } catch (error) {
-    console.error('Unexpected error in fetchAddresses:', error);
-  }
-};
-
-
+  // ✅ FIX: Simplified addAddress without API calls
   const addAddress = async (newAddress: Omit<Address, 'id'>) => {
     try {
-      const token = await AsyncStorage.getItem('userToken') || await AsyncStorage.getItem('authToken');
-      const backendUrl = getBackendUrl();
-      
       const address: Address = {
         ...newAddress,
         id: Date.now().toString(),
       };
 
-      if (token) {
-        // Save to backend
-        const response = await axios.post(
-          `${backendUrl}/api/users/addresses`,
-          address,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        
-        if (response.data.success) {
-          setAddresses(prev => [...prev, response.data.data]);
-        }
-      } else {
-        // Save locally
-        setAddresses(prev => [...prev, address]);
-      }
+      // Save locally only (remove API calls that cause 404)
+      setAddresses(prev => [...prev, address]);
       
       // Update stored shipping address if this is default
       if (address.isDefault) {
         await AsyncStorage.setItem('shippingAddress', JSON.stringify(address));
       }
       
-      Alert.alert('Success', 'Address added successfully');
+      console.log('✅ Address added locally:', address);
     } catch (error) {
-      console.error('Error adding address:', error);
-      Alert.alert('Error', 'Failed to add address');
+      console.error('❌ Error adding address:', error);
+      throw error;
     }
   };
 
+  // ✅ FIX: Simplified updateAddress without API calls
   const updateAddress = async (id: string, updatedAddress: Partial<Address>) => {
     try {
-      const token = await AsyncStorage.getItem('userToken') || await AsyncStorage.getItem('authToken');
-      
-      if (token) {
-        const backendUrl = getBackendUrl();
-        const response = await axios.put(
-          `${backendUrl}/api/users/addresses/${id}`,
-          updatedAddress,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        
-        if (response.data.success) {
-          setAddresses(prev => 
-            prev.map(addr => 
-              addr.id === id ? { ...addr, ...response.data.data } : addr
-            )
-          );
-        }
-      } else {
-        setAddresses(prev => 
-          prev.map(addr => 
-            addr.id === id ? { ...addr, ...updatedAddress } : addr
-          )
-        );
-      }
+      setAddresses(prev => 
+        prev.map(addr => 
+          addr.id === id ? { ...addr, ...updatedAddress } : addr
+        )
+      );
       
       // Update stored shipping address if this is default
       const updated = addresses.find(addr => addr.id === id);
@@ -243,10 +137,10 @@ const fetchAddresses = async () => {
         }));
       }
       
-      Alert.alert('Success', 'Address updated successfully');
+      console.log('✅ Address updated locally:', id);
     } catch (error) {
-      console.error('Error updating address:', error);
-      Alert.alert('Error', 'Failed to update address');
+      console.error('❌ Error updating address:', error);
+      throw error;
     }
   };
 
@@ -317,7 +211,7 @@ const fetchAddresses = async () => {
       updateAddress,
       deleteAddress,
       setDefaultAddress,
-      fetchAddresses,
+     
       fetchUserProfileForAddress,
       loading,
     }}>
